@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Loader2 } from "lucide-react";
 import bcrypt from "bcryptjs";
 
-export default function SignupPage() {
+export default function SigninPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,57 +24,50 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email || !password) {
-      setError("Please fill out all fields.");
-      return;
-    }
-    
-    // Simple email regex validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError("Please provide a valid email address.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long.");
-      return;
-    }
-
+    if (!email || !password) return;
     setError("");
     setLoading(true);
 
     try {
-      // Simulate client-side network latency slightly for standard UX feel
+      // Simulate client-side network latency slightly
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const normalizedEmail = email.toLowerCase().trim();
       const usersRaw = localStorage.getItem("ddc_users");
       const users = usersRaw ? JSON.parse(usersRaw) : [];
 
-      const duplicate = users.find((u: any) => u.email === normalizedEmail);
-      if (duplicate) {
-        throw new Error("An account with this email address already exists.");
+      // Auto-provision default developer account if empty
+      if (users.length === 0 && normalizedEmail === "developer@copilot.local") {
+        const salt = bcrypt.genSaltSync(10);
+        const passwordHash = bcrypt.hashSync("password123", salt);
+        const devUser = {
+          id: "usr_developer",
+          name: "Developer",
+          email: "developer@copilot.local",
+          passwordHash: passwordHash
+        };
+        users.push(devUser);
+        localStorage.setItem("ddc_users", JSON.stringify(users));
       }
 
-      // Hash password on the client using bcryptjs
-      const salt = bcrypt.genSaltSync(10);
-      const passwordHash = bcrypt.hashSync(password, salt);
+      const user = users.find((u: any) => u.email === normalizedEmail);
+      if (!user) {
+        throw new Error("Invalid email or password combination.");
+      }
 
-      const newUser = {
-        id: "usr_" + Math.random().toString(36).substring(2, 15),
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash: passwordHash,
-      };
+      const isPasswordValid = bcrypt.compareSync(password, user.passwordHash);
+      if (!isPasswordValid) {
+        throw new Error("Invalid email or password combination.");
+      }
 
-      users.push(newUser);
-      localStorage.setItem("ddc_users", JSON.stringify(users));
+      // Store a simple secure mock token on successful authentication
+      const mockToken = `mock_jwt_token_${user.id}_${Date.now()}`;
+      localStorage.setItem("token", mockToken);
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/signin");
-      }, 1500);
+        router.push("/dashboard");
+      }, 1000);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
     } finally {
@@ -98,16 +90,16 @@ export default function SignupPage() {
         </div>
       </nav>
 
-      {/* Centered Signup Container */}
+      {/* Centered Signin Container */}
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="max-w-md w-full bg-white rounded-3xl border border-stone-200/90 shadow-md p-8 flex flex-col gap-6 text-left relative z-10">
           
           <div className="space-y-1 text-center">
             <h2 className="text-2xl font-bold tracking-tight text-text-primary">
-              Create your account
+              Welcome back
             </h2>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Start generating production-ready PySpark code instantly
+              Sign in to access your Databricks Developer Copilot
             </p>
           </div>
 
@@ -119,23 +111,11 @@ export default function SignupPage() {
 
           {success ? (
             <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-center text-xs text-green-800 font-mono flex flex-col items-center gap-3">
-              <span className="font-bold">Registration successful!</span>
-              <p className="leading-relaxed">Redirecting you to the Sign In page...</p>
+              <span className="font-bold">Login successful!</span>
+              <p className="leading-relaxed">Redirecting to your dashboard...</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-text-secondary uppercase font-mono mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="John Doe"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-stone-50 border border-border-custom px-3 py-2.5 rounded-xl text-xs text-text-primary outline-none focus:border-stone-400 font-sans"
-                />
-              </div>
-
               <div>
                 <label className="block text-[10px] font-bold text-text-secondary uppercase font-mono mb-1">Email Address</label>
                 <input
@@ -166,16 +146,16 @@ export default function SignupPage() {
                 className="w-full bg-black text-white hover:bg-black/90 font-semibold py-2.5 rounded-xl text-xs shadow transition cursor-pointer mt-2 text-center flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Create Account</span>
+                <span>Sign In</span>
               </button>
             </form>
           )}
 
           {/* Redirect */}
           <div className="text-center text-xs text-text-secondary font-sans mt-2">
-            <span>Already have an account? </span>
-            <Link href="/signin" className="text-primary hover:underline font-semibold">
-              Sign In
+            <span>Don't have an account? </span>
+            <Link href="/signup" className="text-primary hover:underline font-semibold">
+              Sign up
             </Link>
           </div>
 
