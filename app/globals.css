@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #F6F4EE;
+  --color-background: #FDFBF7;
   --color-surface: #FFFFFF;
   --color-primary: #F97316;
   --color-secondary: #2563EB;
   --color-border-custom: #E7E5E4;
-  --color-text-primary: #1F2937;
+  --color-text-primary: #111827;
   --color-text-secondary: #6B7280;
   --color-success: #16A34A;
 
@@ -23,14 +23,24 @@
 }
 
 :root {
-  background-color: #F6F4EE;
-  color: #1F2937;
+  background-color: #FDFBF7;
+  color: #111827;
 }
 
 body {
-  background-color: #F6F4EE;
-  color: #1F2937;
+  background-color: #FDFBF7;
+  color: #111827;
   font-family: var(--font-inter), sans-serif;
+}
+
+.dia-mesh-bg {
+  background-color: #FDFBF7;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(254, 205, 211, 0.4) 0px, transparent 50%), 
+    radial-gradient(at 50% 0%, rgba(224, 242, 254, 0.45) 0px, transparent 50%), 
+    radial-gradient(at 100% 0%, rgba(254, 243, 199, 0.4) 0px, transparent 50%), 
+    radial-gradient(at 0% 100%, rgba(254, 226, 226, 0.25) 0px, transparent 50%), 
+    radial-gradient(at 100% 100%, rgba(238, 242, 255, 0.5) 0px, transparent 50%);
 }
 
 /* Custom Scrollbars */
@@ -40,16 +50,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #F6F4EE;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #E7E5E4;
+  background: #E5E5E5;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #D6D3D1;
+  background: #D4D4D4;
 }
 
 /* Respect reduced-motion preferences */

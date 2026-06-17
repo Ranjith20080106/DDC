@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Play,
   Copy,
@@ -11,26 +11,27 @@ import {
   Sparkles,
   RefreshCw,
   Search,
-  Bell,
-  Menu,
-  X,
-  Send,
-  Plus,
-  MessageSquare,
-  Terminal,
+  BookOpen,
   Settings,
-  BookOpen
+  X,
+  ArrowRight,
+  Send,
+  HelpCircle,
+  Database
 } from "lucide-react";
 
-interface Message {
+interface Notebook {
   id: string;
-  sender: "user" | "assistant";
-  text: string;
-  code?: string;
-  isGenerating?: boolean;
+  name: string;
+  prompt: string;
+  code: string;
 }
 
-const SAMPLE_PYSPARK_CODE = `from pyspark.sql import SparkSession
+const DEFAULT_NOTEBOOK: Notebook = {
+  id: "process_customer_data.py",
+  name: "process_customer_data.py",
+  prompt: "Read customer data from ADLS, remove duplicates using latest timestamp, and load into a Delta table.",
+  code: `from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, row_number
 from pyspark.sql.window import Window
 import logging
@@ -72,6 +73,7 @@ def process_customer_data(spark: SparkSession, source_path: str, target_table: s
     logger.info("Pipeline executed successfully!")
 
 if __name__ == "__main__":
+    # Initialize Databricks Spark Session
     spark = SparkSession.builder \\
         .appName("DDC_Customer_Pipeline") \\
         .getOrCreate()
@@ -80,36 +82,38 @@ if __name__ == "__main__":
     target_delta_table = "silver.customers_deduped"
     
     process_customer_data(spark, source_adls_path, target_delta_table)
-`;
+`
+};
 
 export default function DatabricksDeveloperCopilot() {
-  const [inputVal, setInputVal] = useState<string>("");
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      sender: "assistant",
-      text: "Hello! I am your Databricks Developer Copilot. Describe your PySpark data ingestion, transformation, or Delta Lake requirements, and I will generate production-ready code for you."
-    }
-  ]);
+  const [prompt, setPrompt] = useState<string>(DEFAULT_NOTEBOOK.prompt);
+  const [editorCode, setEditorCode] = useState<string>(DEFAULT_NOTEBOOK.code);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationLineIndex, setGenerationLineIndex] = useState<number>(DEFAULT_NOTEBOOK.code.split("\n").length);
+  const [activePipelineNode, setActivePipelineNode] = useState<number>(3); // 0, 1, 2, 3
 
-  // Suggestions checkbox state
+  // Suggestions state
   const [suggestions, setSuggestions] = useState([
-    { id: "logging", text: "Add logging", active: true },
-    { id: "delta_opt", text: "Use Delta optimization", active: false },
-    { id: "cache", text: "Cache DataFrame", active: false }
+    { id: "logging", text: "Logging", active: true },
+    { id: "delta_opt", text: "Optimize Delta", active: false },
+    { id: "cache", text: "Cache DF", active: false }
   ]);
 
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
-  const [generationLinesCount, setGenerationLinesCount] = useState<number>(0);
-
+  const [copied, setCopied] = useState<boolean>(false);
+  const [activeOverlay, setActiveOverlay] = useState<string | null>(null); // "Docs" | "Settings" | "Pipeline" | null
+  
   const [notification, setNotification] = useState<{ show: boolean; text: string; type: "success" | "info" }>({
     show: false,
     text: "",
     type: "info"
   });
 
+  // Settings
+  const [workspaceUrl, setWorkspaceUrl] = useState("https://adb-179347590123.14.azuredatabricks.net");
+  const [defaultCatalog, setDefaultCatalog] = useState("main");
+  const [defaultSchema, setDefaultSchema] = useState("silver");
+
+  // Show dynamic notification
   const triggerNotification = (text: string, type: "success" | "info" = "info") => {
     setNotification({ show: true, text, type });
     setTimeout(() => {
@@ -117,115 +121,67 @@ export default function DatabricksDeveloperCopilot() {
     }, 3000);
   };
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  // Run PySpark code generation stream simulation
+  const handleGenerate = () => {
+    if (isGenerating) return;
 
-  // Auto Scroll to Bottom of Chat on new messages
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, generationLinesCount]);
+    setIsGenerating(true);
+    setGenerationLineIndex(0);
+    setActivePipelineNode(0);
+    triggerNotification("Assembling ingestion flow...", "info");
 
-  const handleSend = () => {
-    if (!inputVal.trim() || generatingId) return;
+    const fullCode = DEFAULT_NOTEBOOK.code;
+    let customizedCode = fullCode;
 
-    const userPrompt = inputVal;
-    setInputVal(""); // Clear prompt box
+    const deltaActive = suggestions.find(s => s.id === "delta_opt")?.active;
+    const cacheActive = suggestions.find(s => s.id === "cache")?.active;
+    const loggingActive = suggestions.find(s => s.id === "logging")?.active;
 
-    const userMsgId = `user-${Date.now()}`;
-    const assistantMsgId = `assistant-${Date.now()}`;
-
-    // 1. Add User query message to log
-    setMessages(prev => [
-      ...prev,
-      { id: userMsgId, sender: "user", text: userPrompt }
-    ]);
-
-    // 2. Add Assistant template response
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: assistantMsgId,
-          sender: "assistant",
-          text: `Here is the production-ready PySpark script designed to handle your requirement:`,
-          code: "",
-          isGenerating: true
-        }
-      ]);
-
-      setGeneratingId(assistantMsgId);
-      setGenerationLinesCount(0);
-
-      // Customize output code depending on Suggestions checkboxes
-      let finalCode = SAMPLE_PYSPARK_CODE;
-      const loggingActive = suggestions.find(s => s.id === "logging")?.active;
-      const deltaActive = suggestions.find(s => s.id === "delta_opt")?.active;
-      const cacheActive = suggestions.find(s => s.id === "cache")?.active;
-
-      if (!loggingActive) {
-        finalCode = finalCode
-          .replace("import logging", "")
-          .replace(/logger\.\w+\(.*?\)/g, "# logging disabled");
-      }
-      if (cacheActive) {
-        finalCode = finalCode.replace(
-          "df_deduped = df_raw",
-          "df_deduped = df_raw.cache() # Cache raw data for reuse"
-        );
-      }
-      if (deltaActive) {
-        finalCode = finalCode.replace(
-          "logger.info(\"Pipeline executed successfully!\")",
-          `# Run Delta optimization\n    logger.info("Optimizing Delta Lake table layout...")\n    spark.sql(f"OPTIMIZE {target_table} ZORDER BY (customer_id)")\n    logger.info("Pipeline executed successfully!")`
-        );
-      }
-
-      const lines = finalCode.split("\n");
-      let currentLine = 0;
-
-      // Simulate streaming lines typing
-      const interval = setInterval(() => {
-        currentLine += 2; // Stream 2 lines at a time for smooth speed
-        if (currentLine > lines.length) {
-          currentLine = lines.length;
-        }
-
-        setGenerationLinesCount(currentLine);
-
-        // Update assistant code stream state
-        setMessages(prev =>
-          prev.map(msg => {
-            if (msg.id === assistantMsgId) {
-              return {
-                ...msg,
-                code: lines.slice(0, currentLine).join("\n")
-              };
-            }
-            return msg;
-          })
-        );
-
-        if (currentLine >= lines.length) {
-          clearInterval(interval);
-          setGeneratingId(null);
-          setMessages(prev =>
-            prev.map(msg => {
-              if (msg.id === assistantMsgId) {
-                return { ...msg, isGenerating: false };
-              }
-              return msg;
-            })
-          );
-        }
-      }, 50);
-
-    }, 600);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    if (!loggingActive) {
+      customizedCode = customizedCode
+        .replace("import logging", "")
+        .replace(/logger\.\w+\(.*?\)/g, "# logging disabled");
     }
+
+    if (cacheActive) {
+      customizedCode = customizedCode.replace(
+        "df_deduped = df_raw",
+        "df_deduped = df_raw.cache() # Cache raw data for reuse"
+      );
+    }
+
+    if (deltaActive) {
+      customizedCode = customizedCode.replace(
+        "logger.info(\"Pipeline executed successfully!\")",
+        `# Z-Order Optimization\n    logger.info("Optimizing Delta table layouts...")\n    spark.sql(f"OPTIMIZE {target_table} ZORDER BY (customer_id)")\n    logger.info("Pipeline executed successfully!")`
+      );
+    }
+
+    const customLines = customizedCode.split("\n");
+    let currentLine = 0;
+
+    const interval = setInterval(() => {
+      currentLine++;
+      setGenerationLineIndex(currentLine);
+
+      const progressRatio = currentLine / customLines.length;
+      if (progressRatio < 0.25) {
+        setActivePipelineNode(0);
+      } else if (progressRatio < 0.5) {
+        setActivePipelineNode(1);
+      } else if (progressRatio < 0.75) {
+        setActivePipelineNode(2);
+      } else {
+        setActivePipelineNode(3);
+      }
+
+      if (currentLine >= customLines.length) {
+        clearInterval(interval);
+        setIsGenerating(false);
+        setEditorCode(customizedCode);
+        triggerNotification("Compilation finished", "success");
+      }
+    }, 35);
   };
 
   const toggleSuggestion = (id: string) => {
@@ -234,26 +190,37 @@ export default function DatabricksDeveloperCopilot() {
     );
   };
 
-  const handleCopyCode = (codeText: string, msgId: string) => {
-    navigator.clipboard.writeText(codeText);
-    setCopiedId(msgId);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(editorCode);
+    setCopied(true);
+    triggerNotification("Copied code to clipboard", "success");
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownloadCode = (codeText: string) => {
+  const handleDownloadCode = () => {
     const element = document.createElement("a");
-    const file = new Blob([codeText], { type: "text/plain" });
+    const file = new Blob([editorCode], { type: "text/plain" });
     element.href = URL.createObjectURL(file);
-    element.download = "process_customer_data.py";
+    element.download = DEFAULT_NOTEBOOK.id;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    triggerNotification("Script file downloaded", "success");
   };
 
-  // Custom Python syntax highlighter for light editor box
-  const highlightCode = (codeText: string) => {
-    const rawLines = codeText.split("\n");
-    return rawLines.map((line, idx) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleGenerate();
+    }
+  };
+
+  // Custom Python Syntax Highlighter adapted for warm layout
+  const renderHighlightedCode = () => {
+    const rawLines = editorCode.split("\n");
+    const activeLines = rawLines.slice(0, generationLineIndex);
+
+    return activeLines.map((line, idx) => {
       if (line.trim() === "") {
         return (
           <div key={idx} className="flex min-h-[1.5rem] select-none hover:bg-stone-50 px-4 font-mono text-xs md:text-sm">
@@ -280,7 +247,7 @@ export default function DatabricksDeveloperCopilot() {
       ];
       keywords.forEach(kw => {
         const regex = new RegExp(`\\b${kw}\\b`, "g");
-        highlighted = highlighted.replace(regex, `<span class="text-[#EA580C] font-semibold">${kw}</span>`);
+        highlighted = highlighted.replace(regex, `<span class="text-primary font-semibold">${kw}</span>`);
       });
 
       const sparkKeywords = [
@@ -311,271 +278,319 @@ export default function DatabricksDeveloperCopilot() {
   };
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-background text-text-primary">
+    <div className="min-h-screen w-screen flex flex-col dia-mesh-bg text-text-primary overflow-x-hidden relative pb-24 select-none">
       
-      {/* 1. LEFT SIDEBAR (Dark Navy) */}
-      <aside className={`bg-sidebar text-slate-300 flex flex-col justify-between border-r border-border-custom z-20 shrink-0 transition-transform duration-300 lg:translate-x-0 ${
-        sidebarOpen ? "w-64 translate-x-0 static" : "w-0 -translate-x-full fixed"
-      }`}>
+      {/* Centered Header & Branding */}
+      <div className="max-w-4xl w-full mx-auto px-6 pt-12 text-center flex flex-col items-center gap-6">
         
-        {/* Sidebar content */}
-        <div className="flex flex-col h-full overflow-hidden">
-          
-          {/* Header block */}
-          <div className="h-14 flex items-center justify-between px-4 border-b border-slate-800 bg-slate-950/40 shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded bg-primary flex items-center justify-center text-[10px] font-bold text-white">
-                D
-              </div>
-              <span className="font-semibold text-xs text-white uppercase tracking-wider">Dev Copilot</span>
-            </div>
-            <button 
-              onClick={() => setSidebarOpen(false)}
-              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        {/* Logo (Centered) */}
+        <div className="flex items-center gap-2 px-3 py-1 bg-white/80 border border-border-custom rounded-full shadow-sm">
+          <div className="w-4.5 h-4.5 rounded-full bg-primary flex items-center justify-center font-bold text-[9px] text-white">
+            D
           </div>
-
-          {/* New Chat Session CTA */}
-          <div className="p-3 shrink-0">
-            <button 
-              onClick={() => {
-                setMessages([
-                  {
-                    id: "welcome",
-                    sender: "assistant",
-                    text: "Hello! Describe your PySpark data ingestion, transformation, or Delta Lake requirements, and I will generate production-ready code."
-                  }
-                ]);
-              }}
-              className="w-full py-2 px-3 rounded-lg border border-slate-700 hover:border-slate-500 text-white text-xs font-semibold flex items-center justify-center gap-2 hover:bg-slate-900 transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Session</span>
-            </button>
-          </div>
-
-          {/* Past Chat Session list */}
-          <div className="flex-1 overflow-y-auto px-2 py-1 space-y-1 select-none">
-            <div className="px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Recent Sessions</div>
-            {[
-              "Raw Ingestion Customers",
-              "Sales Category Rollups",
-              "Z-Order Delta Optimizations",
-              "Window Rank Deduplication"
-            ].map((session, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  setInputVal(`Read and process ${session.toLowerCase()} table...`);
-                  handleSend();
-                }}
-                className="w-full py-2 px-3 rounded-md text-left text-xs text-slate-400 hover:text-white hover:bg-slate-900/60 truncate flex items-center gap-2 transition"
-              >
-                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{session}</span>
-              </button>
-            ))}
-          </div>
-
+          <span className="font-semibold text-[11px] tracking-tight text-text-primary uppercase font-mono">
+            Copilot
+          </span>
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/20 shrink-0">
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+        {/* Title (Centered, large) */}
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-text-primary max-w-2xl leading-none">
+          Chat with your lakehouse
+        </h1>
+
+        {/* Subtitle / Cluster Status Pill */}
+        <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#EAE8E2]/50 border border-border-custom p-1 px-3.5 rounded-full text-xs font-mono text-text-secondary select-none">
+          <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            <span>Lakehouse Online</span>
+            <span>standard_d8s_v3 (active)</span>
           </div>
-        </div>
-
-      </aside>
-
-      {/* Main Chat Frame */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white">
-        
-        {/* TOP HEADER */}
-        <header className="h-14 bg-white border-b border-border-custom flex items-center justify-between px-6 shrink-0 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            {!sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="p-1.5 rounded hover:bg-slate-100 border border-slate-200 text-slate-600"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
-            )}
-            <span className="font-semibold text-sm text-text-primary">
-              Databricks Developer Copilot
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-text-secondary bg-stone-100 px-2 py-0.5 rounded border border-border-custom">
-              Cluster: standard_d8s_v3
-            </span>
-            <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700 border border-border-custom shadow-sm">
-              DE
-            </div>
-          </div>
-        </header>
-
-        {/* Scrollable Message Flow Area */}
-        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 space-y-8 select-text">
-          
-          <div className="max-w-3xl mx-auto space-y-8">
-            {messages.map((msg) => {
-              const isAssistant = msg.sender === "assistant";
-              return (
-                <div key={msg.id} className="flex gap-4 items-start text-left">
-                  
-                  {/* Sender Icon */}
-                  <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-xs shadow-sm border ${
-                    isAssistant 
-                      ? "bg-orange-50 border-orange-200 text-primary" 
-                      : "bg-stone-100 border-stone-200 text-slate-700"
-                  }`}>
-                    {isAssistant ? <Sparkles className="w-4 h-4" /> : "ME"}
-                  </div>
-
-                  {/* Message body */}
-                  <div className="flex-1 space-y-4">
-                    
-                    {/* Prompt message explanation */}
-                    <div className="text-base text-text-primary leading-relaxed whitespace-pre-wrap">
-                      {msg.text}
-                    </div>
-
-                    {/* Embedded code editor if available */}
-                    {msg.code !== undefined && (
-                      <div className="rounded-xl border border-border-custom shadow-sm overflow-hidden flex flex-col bg-white">
-                        
-                        {/* Editor Header */}
-                        <div className="px-4 py-2 bg-stone-50 border-b border-border-custom flex items-center justify-between shrink-0">
-                          <div className="flex items-center gap-2">
-                            <FileCode className="w-4 h-4 text-stone-500" />
-                            <span className="font-mono text-xs font-semibold text-text-primary">process_customer_data.py</span>
-                          </div>
-                          
-                          {/* Code actions */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleCopyCode(msg.code || "", msg.id)}
-                              className="p-1 rounded hover:bg-stone-200 text-text-secondary hover:text-text-primary transition"
-                              title="Copy Code"
-                            >
-                              {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                            <button
-                              onClick={() => handleDownloadCode(msg.code || "")}
-                              className="p-1 rounded hover:bg-stone-200 text-text-secondary hover:text-text-primary transition"
-                              title="Download Script"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Editor content block */}
-                        <div className="flex-1 py-4 overflow-y-auto max-h-[360px] flex flex-col bg-white">
-                          {highlightCode(msg.code)}
-
-                          {msg.isGenerating && (
-                            <div className="px-4 flex items-center py-1 font-mono text-[10px] text-text-secondary/60 animate-pulse">
-                              <span className="w-10 text-right pr-4 border-r border-slate-200 select-none">···</span>
-                              <span className="pl-4 italic flex items-center gap-1">
-                                <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Building Spark DataFrames...
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* 2. CHAT INPUT PANEL (Bottom, Sticky) */}
-        <div className="bg-gradient-to-t from-white via-white/95 to-transparent shrink-0">
-          
-          <div className="max-w-3xl w-full mx-auto px-4 pb-6 pt-2 text-left">
-            
-            {/* Input bar */}
-            <div className="bg-[#F4F4F4] border border-stone-200 rounded-2xl shadow-sm p-2 flex flex-col relative focus-within:border-stone-300 transition-all duration-200">
-              
-              <textarea
-                value={inputVal}
-                onChange={(e) => setInputVal(e.target.value)}
-                onKeyDown={handleKeyDown}
-                rows={1}
-                placeholder="Ask me to generate PySpark code or troubleshoot errors... (Press Enter to send)"
-                className="w-full min-h-[44px] bg-transparent text-base border-0 focus:ring-0 outline-none resize-none leading-relaxed p-2 text-text-primary placeholder-stone-400"
-              />
-
-              {/* Action/toggles footer container */}
-              <div className="px-2 pt-2 pb-1 border-t border-stone-200/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none">
-                
-                {/* Suggestions checkbox */}
-                <div className="flex flex-wrap gap-4 items-center">
-                  {suggestions.map((item) => (
-                    <label key={item.id} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={item.active}
-                        onChange={() => toggleSuggestion(item.id)}
-                        className="rounded border-stone-300 bg-white text-primary focus:ring-0 w-3.5 h-3.5"
-                      />
-                      <span className={`text-xs font-sans transition ${item.active ? "text-text-primary font-medium" : "text-text-secondary"}`}>
-                        {item.text}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Send button (Orange style) */}
-                <button
-                  onClick={handleSend}
-                  disabled={!inputVal.trim() || !!generatingId}
-                  className={`self-end sm:self-auto p-2 rounded-xl text-white transition cursor-pointer flex items-center justify-center ${
-                    inputVal.trim() && !generatingId
-                      ? "bg-primary hover:bg-primary/90"
-                      : "bg-stone-300 text-stone-500 cursor-not-allowed"
-                  }`}
-                  title="Send Message"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-
-            </div>
-
-            {/* Shift+Enter helper warning */}
-            <div className="text-[10px] text-stone-400 mt-2 pl-2 text-center sm:text-left font-sans">
-              Press <kbd className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-500 select-none">Enter</kbd> to generate code • Use <kbd className="px-1.5 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-500 select-none">Shift + Enter</kbd> for new lines
-            </div>
-
-          </div>
-
+          <span className="hidden sm:inline opacity-40">|</span>
+          <span className="truncate max-w-[200px]">{workspaceUrl}</span>
         </div>
 
       </div>
 
+      {/* Main Workspace Frame */}
+      <main className="max-w-3xl w-full mx-auto px-6 pt-10 flex flex-col gap-8 text-center items-center">
+        
+        {/* Floating Capsule Chat Input */}
+        <div className="w-full bg-white rounded-3xl border border-stone-200/90 shadow-md p-4 relative flex flex-col gap-3 focus-within:border-stone-400 focus-within:shadow-lg transition-all duration-300 z-10 text-left">
+          
+          <div className="flex gap-3 items-start">
+            <Search className="w-5 h-5 text-text-secondary shrink-0 mt-2.5" />
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              className="w-full min-h-[44px] bg-transparent text-lg border-0 focus:ring-0 outline-none resize-none leading-relaxed p-1.5 text-text-primary placeholder-stone-400"
+              placeholder="Hey Copilot... (Press Enter to generate PySpark code)"
+            />
+          </div>
+
+          {/* Action pill checkboxes + submit button */}
+          <div className="border-t border-stone-100 pt-3 flex items-center justify-between">
+            <div className="flex flex-wrap gap-2.5">
+              {suggestions.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => toggleSuggestion(item.id)}
+                  className={`px-3 py-1 rounded-full border text-xs font-medium transition duration-150 ${
+                    item.active
+                      ? "bg-stone-900 border-stone-950 text-white"
+                      : "bg-stone-50 border-stone-200 text-text-secondary hover:bg-stone-100"
+                  }`}
+                >
+                  + {item.text}
+                </button>
+              ))}
+            </div>
+
+            {/* Black Circle Submit button */}
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !prompt.trim()}
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition shadow-sm ${
+                prompt.trim() && !isGenerating
+                  ? "bg-black hover:bg-black/90 cursor-pointer"
+                  : "bg-stone-200 text-stone-400 cursor-not-allowed"
+              }`}
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+        </div>
+
+        {/* Faint browser mockups in background */}
+        <div className="w-full flex flex-col bg-white border border-border-custom rounded-2xl shadow-sm overflow-hidden text-left transition-all duration-300">
+          
+          {/* macOS Browser Header */}
+          <div className="px-4 py-2.5 bg-stone-50 border-b border-border-custom flex items-center justify-between select-none">
+            {/* 3 colored dots */}
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-red-400" />
+              <span className="w-3 h-3 rounded-full bg-yellow-400" />
+              <span className="w-3 h-3 rounded-full bg-green-400" />
+            </div>
+
+            {/* URL/File tab bar */}
+            <div className="bg-white border border-border-custom rounded-md px-12 py-1 text-[11px] font-mono text-text-secondary">
+              process_customer_data.py
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-1.5 text-text-secondary">
+              <button
+                onClick={handleCopyCode}
+                className="p-1 rounded hover:bg-stone-200 hover:text-text-primary transition"
+                title="Copy Code"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={handleDownloadCode}
+                className="p-1 rounded hover:bg-stone-200 hover:text-text-primary transition"
+                title="Download Script"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Editor contents */}
+          <div className="bg-white py-4 overflow-y-auto min-h-[320px] max-h-[480px] flex flex-col select-text font-mono border-b border-border-custom">
+            {renderHighlightedCode()}
+
+            {isGenerating && (
+              <div className="px-4 flex items-center py-1 font-mono text-[10px] text-text-secondary/60 animate-pulse">
+                <span className="w-10 text-right pr-4 border-r border-slate-200 select-none">···</span>
+                <span className="pl-4 italic flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Compiling ingestion scripts...
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Footer status info */}
+          <div className="px-4 py-2 bg-stone-50 text-[10px] font-mono text-text-secondary flex justify-between">
+            <span>Lines: {editorCode.split("\n").length} • Python 3.10</span>
+            <span>Spark 3.4.1</span>
+          </div>
+
+        </div>
+
+      </main>
+
+      {/* 4. FLOATING BOTTOM NAVIGATION */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md rounded-full border border-stone-200 shadow-lg px-4 py-2 flex items-center gap-4 z-40 select-none">
+        {[
+          { id: "Docs", label: "API Reference", icon: BookOpen },
+          { id: "Settings", label: "Settings", icon: Settings },
+          { id: "Pipeline", label: "Pipeline Flow", icon: Layers }
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeOverlay === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveOverlay(isActive ? null : item.id)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition ${
+                isActive
+                  ? "bg-black text-white"
+                  : "text-text-secondary hover:text-text-primary hover:bg-stone-100"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* OVERLAY MODAL MANAGER */}
+      {activeOverlay && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-3xl border border-stone-200 max-w-xl w-full shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200 text-left">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-stone-50 border-b border-border-custom flex items-center justify-between select-none">
+              <span className="font-bold text-sm tracking-tight uppercase font-mono text-text-secondary">
+                {activeOverlay === "Docs" && "API Reference"}
+                {activeOverlay === "Settings" && "Workspace Settings"}
+                {activeOverlay === "Pipeline" && "Pipeline Ingestion Flow"}
+              </span>
+              <button
+                onClick={() => setActiveOverlay(null)}
+                className="p-1 rounded-full hover:bg-stone-200 text-stone-500 hover:text-stone-700 transition"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              
+              {activeOverlay === "Docs" && (
+                <div className="space-y-4">
+                  {[
+                    {
+                      title: "Window.partitionBy()",
+                      syntax: "Window.partitionBy(*cols).orderBy(*cols)",
+                      desc: "Groups data rows into partitions over which window aggregation is computed. Commonly used for running sums or ranking deduplications."
+                    },
+                    {
+                      title: "df.write.format('delta')",
+                      syntax: "df.write.format('delta').mode(saveMode).save(path)",
+                      desc: "Saves the contents of the DataFrame as a Delta Lake table. Supports mergeSchema, overwriteSchema, and partitionBy options."
+                    },
+                    {
+                      title: "OPTIMIZE table_name",
+                      syntax: "spark.sql('OPTIMIZE table_name ZORDER BY (columns)')",
+                      desc: "Coalesces small files in Delta tables to improve query speed. Z-Order clustering on high-cardinality filter columns optimizes read runtimes."
+                    }
+                  ].map((doc) => (
+                    <div key={doc.title} className="bg-stone-50 rounded-xl border border-border-custom p-4 space-y-2">
+                      <h3 className="text-xs font-bold text-text-primary font-mono">{doc.title}</h3>
+                      <code className="block text-[10px] bg-white p-2 rounded border border-card/65 font-mono text-text-secondary">
+                        {doc.syntax}
+                      </code>
+                      <p className="text-xs text-text-secondary leading-relaxed">{doc.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeOverlay === "Settings" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-text-secondary uppercase font-mono mb-1">Databricks Workspace URL</label>
+                    <input
+                      type="text"
+                      value={workspaceUrl}
+                      onChange={(e) => setWorkspaceUrl(e.target.value)}
+                      className="w-full bg-stone-50 border border-border-custom p-2.5 rounded-xl text-xs text-text-primary outline-none focus:border-stone-400 font-mono"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase font-mono mb-1">Catalog</label>
+                      <input
+                        type="text"
+                        value={defaultCatalog}
+                        onChange={(e) => setDefaultCatalog(e.target.value)}
+                        className="w-full bg-stone-50 border border-border-custom p-2.5 rounded-xl text-xs text-text-primary outline-none focus:border-stone-400 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase font-mono mb-1">Schema</label>
+                      <input
+                        type="text"
+                        value={defaultSchema}
+                        onChange={(e) => setDefaultSchema(e.target.value)}
+                        className="w-full bg-stone-50 border border-border-custom p-2.5 rounded-xl text-xs text-text-primary outline-none focus:border-stone-400 font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setActiveOverlay(null);
+                        triggerNotification("Settings saved successfully", "success");
+                      }}
+                      className="px-4 py-2 rounded-xl bg-black text-white text-xs font-semibold shadow hover:bg-black/90 transition cursor-pointer"
+                    >
+                      Save Workspace Configuration
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeOverlay === "Pipeline" && (
+                <div className="space-y-6">
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    Visual representation of the active ingestion graph. Blue outlines indicate processing or verified targets.
+                  </p>
+                  <div className="border border-border-custom bg-stone-50/50 rounded-xl p-4 flex flex-col items-center gap-2.5">
+                    {[
+                      { label: "ADLS Ingest", active: activePipelineNode === 0, completed: activePipelineNode > 0 },
+                      { label: "Read Data", active: activePipelineNode === 1, completed: activePipelineNode > 1 },
+                      { label: "Transform", active: activePipelineNode === 2, completed: activePipelineNode > 2 },
+                      { label: "Delta Table", active: activePipelineNode === 3, completed: activePipelineNode > 3 }
+                    ].map((step, idx) => {
+                      return (
+                        <React.Fragment key={step.label}>
+                          {idx > 0 && (
+                            <div className={`w-px h-5 border-l border-dashed transition-colors duration-300 ${
+                              step.completed || step.active ? "border-primary" : "border-stone-300"
+                            }`} />
+                          )}
+                          <div className={`w-full max-w-sm px-3 py-2.5 rounded-xl border text-center font-mono text-xs transition duration-200 ${
+                            step.active
+                              ? "bg-orange-50 border-primary text-primary font-bold shadow-sm"
+                              : step.completed
+                                ? "bg-stone-100 border-stone-200 text-stone-400"
+                                : "bg-white border-border-custom text-text-secondary"
+                          }`}>
+                            {step.label}
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {notification.show && (
-        <div className={`fixed bottom-4 right-4 z-50 p-3 rounded border shadow-lg flex items-center gap-2 max-w-sm transition-all duration-300 ${
-          notification.type === "success" 
-            ? "bg-green-50 border-green-200 text-green-800 font-mono text-xs" 
-            : "bg-white border-stone-200 text-text-primary font-mono text-xs"
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${notification.type === "success" ? "bg-green-600" : "bg-primary"} animate-pulse`} />
+        <div className={`fixed bottom-4 right-4 z-50 p-3 rounded border shadow-lg flex items-center gap-2 max-w-sm bg-white border-stone-200 text-text-primary font-mono text-xs`}>
+          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
           <span>{notification.text}</span>
         </div>
       )}
