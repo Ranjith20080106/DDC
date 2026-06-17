@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Play,
   Copy,
@@ -101,6 +102,8 @@ export default function DatabricksDeveloperCopilot() {
 
   const [copied, setCopied] = useState<boolean>(false);
   const [activeOverlay, setActiveOverlay] = useState<string | null>(null); // "Docs" | "Settings" | "Pipeline" | null
+  const [showOutput, setShowOutput] = useState<boolean>(false);
+  const [submittedPrompt, setSubmittedPrompt] = useState<string>("");
   
   const [notification, setNotification] = useState<{ show: boolean; text: string; type: "success" | "info" }>({
     show: false,
@@ -125,6 +128,8 @@ export default function DatabricksDeveloperCopilot() {
   const handleGenerate = () => {
     if (isGenerating) return;
 
+    setShowOutput(true);
+    setSubmittedPrompt(prompt);
     setIsGenerating(true);
     setGenerationLineIndex(0);
     setActivePipelineNode(0);
@@ -271,7 +276,7 @@ export default function DatabricksDeveloperCopilot() {
       return (
         <div key={idx} className="flex hover:bg-stone-50 px-4 font-mono text-xs md:text-sm">
           <span className="w-10 text-right pr-4 text-stone-400 select-none border-r border-stone-200">{idx + 1}</span>
-          <span className="pl-4 flex-1 whitespace-pre text-stone-800" dangerouslySetInnerHTML={{ __html: highlighted }} />
+          <span className="pl-4 flex-1 whitespace-pre-wrap break-words text-stone-800" dangerouslySetInnerHTML={{ __html: highlighted }} />
         </div>
       );
     });
@@ -280,145 +285,175 @@ export default function DatabricksDeveloperCopilot() {
   return (
     <div className="min-h-screen w-screen flex flex-col dia-mesh-bg text-text-primary overflow-x-hidden relative pb-24 select-none">
       
-      {/* Centered Header & Branding */}
-      <div className="max-w-4xl w-full mx-auto px-6 pt-12 text-center flex flex-col items-center gap-6">
-        
-        {/* Logo (Centered) */}
-        <div className="flex items-center gap-2 px-3 py-1 bg-white/80 border border-border-custom rounded-full shadow-sm">
-          <div className="w-4.5 h-4.5 rounded-full bg-primary flex items-center justify-center font-bold text-[9px] text-white">
-            D
+      {/* Top Navigation Bar */}
+      <nav className="h-16 w-full bg-white/60 backdrop-blur-md border-b border-border-custom flex items-center justify-between px-8 sticky top-0 z-30 select-none">
+        {/* Left Side: Brand Name */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-black text-white shadow-sm shrink-0">
+            <Sparkles className="w-4.5 h-4.5 text-primary" />
           </div>
-          <span className="font-semibold text-[11px] tracking-tight text-text-primary uppercase font-mono">
-            Copilot
+          <span className="font-display font-bold text-sm md:text-base tracking-tight text-text-primary select-none">
+            Databricks <span className="text-primary font-bold">Developer Copilot</span>
           </span>
         </div>
 
+        {/* Right Side: Sign Up & Login Buttons */}
+        <div className="flex items-center gap-4">
+          <Link 
+            href="/login"
+            className="text-xs font-semibold text-text-secondary hover:text-text-primary px-3 py-1.5 transition"
+          >
+            Login
+          </Link>
+          <Link 
+            href="/signup"
+            className="bg-black text-white hover:bg-black/90 text-xs font-semibold px-4 py-1.5 rounded-full shadow-sm transition"
+          >
+            Sign Up
+          </Link>
+        </div>
+      </nav>
+
+      {/* Centered Header & Branding */}
+      <div className="max-w-4xl w-full mx-auto px-6 pt-12 text-center flex flex-col items-center gap-6">
+
         {/* Title (Centered, large) */}
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-text-primary max-w-2xl leading-none">
-          Chat with your lakehouse
+          Write PySpark code at the speed of thought
         </h1>
 
-        {/* Subtitle / Cluster Status Pill */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#EAE8E2]/50 border border-border-custom p-1 px-3.5 rounded-full text-xs font-mono text-text-secondary select-none">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            <span>standard_d8s_v3 (active)</span>
-          </div>
-          <span className="hidden sm:inline opacity-40">|</span>
-          <span className="truncate max-w-[200px]">{workspaceUrl}</span>
-        </div>
+
 
       </div>
 
       {/* Main Workspace Frame */}
-      <main className="max-w-3xl w-full mx-auto px-6 pt-10 flex flex-col gap-8 text-center items-center">
+      <main className="max-w-4xl w-full mx-auto px-6 pt-10 flex flex-col gap-8 text-center items-center">
         
         {/* Floating Capsule Chat Input */}
-        <div className="w-full bg-white rounded-3xl border border-stone-200/90 shadow-md p-4 relative flex flex-col gap-3 focus-within:border-stone-400 focus-within:shadow-lg transition-all duration-300 z-10 text-left">
-          
-          <div className="flex gap-3 items-start">
-            <Search className="w-5 h-5 text-text-secondary shrink-0 mt-2.5" />
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={1}
-              className="w-full min-h-[44px] bg-transparent text-lg border-0 focus:ring-0 outline-none resize-none leading-relaxed p-1.5 text-text-primary placeholder-stone-400"
-              placeholder="Hey Copilot... (Press Enter to generate PySpark code)"
-            />
-          </div>
+        <div className="w-full max-w-xl bg-white rounded-full border border-stone-200 shadow-sm px-5 py-2 flex items-center gap-3 focus-within:border-stone-400 focus-within:shadow-md transition-all duration-300 z-10 text-left">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            className="flex-1 bg-transparent text-xs md:text-sm border-0 focus:ring-0 outline-none resize-none leading-relaxed py-1.5 text-text-primary placeholder-stone-400"
+            placeholder="Hey Copilot... (Press Enter to generate PySpark code)"
+          />
 
-          {/* Action pill checkboxes + submit button */}
-          <div className="border-t border-stone-100 pt-3 flex items-center justify-between">
-            <div className="flex flex-wrap gap-2.5">
-              {suggestions.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => toggleSuggestion(item.id)}
-                  className={`px-3 py-1 rounded-full border text-xs font-medium transition duration-150 ${
-                    item.active
-                      ? "bg-stone-900 border-stone-950 text-white"
-                      : "bg-stone-50 border-stone-200 text-text-secondary hover:bg-stone-100"
-                  }`}
-                >
-                  + {item.text}
-                </button>
-              ))}
-            </div>
-
-            {/* Black Circle Submit button */}
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition shadow-sm ${
-                prompt.trim() && !isGenerating
-                  ? "bg-black hover:bg-black/90 cursor-pointer"
-                  : "bg-stone-200 text-stone-400 cursor-not-allowed"
-              }`}
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
+          {/* Black Circle Submit button */}
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating || !prompt.trim()}
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-white transition shadow-sm shrink-0 ${
+              prompt.trim() && !isGenerating
+                ? "bg-black hover:bg-black/90 cursor-pointer"
+                : "bg-stone-200 text-stone-400 cursor-not-allowed"
+            }`}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Faint browser mockups in background */}
-        <div className="w-full flex flex-col bg-white border border-border-custom rounded-2xl shadow-sm overflow-hidden text-left transition-all duration-300">
-          
-          {/* macOS Browser Header */}
-          <div className="px-4 py-2.5 bg-stone-50 border-b border-border-custom flex items-center justify-between select-none">
-            {/* 3 colored dots */}
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full bg-red-400" />
-              <span className="w-3 h-3 rounded-full bg-yellow-400" />
-              <span className="w-3 h-3 rounded-full bg-green-400" />
-            </div>
-
-            {/* URL/File tab bar */}
-            <div className="bg-white border border-border-custom rounded-md px-12 py-1 text-[11px] font-mono text-text-secondary">
-              process_customer_data.py
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-1.5 text-text-secondary">
-              <button
-                onClick={handleCopyCode}
-                className="p-1 rounded hover:bg-stone-200 hover:text-text-primary transition"
-                title="Copy Code"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-              <button
-                onClick={handleDownloadCode}
-                className="p-1 rounded hover:bg-stone-200 hover:text-text-primary transition"
-                title="Download Script"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Editor contents */}
-          <div className="bg-white py-4 overflow-y-auto min-h-[320px] max-h-[480px] flex flex-col select-text font-mono border-b border-border-custom">
-            {renderHighlightedCode()}
-
-            {isGenerating && (
-              <div className="px-4 flex items-center py-1 font-mono text-[10px] text-text-secondary/60 animate-pulse">
-                <span className="w-10 text-right pr-4 border-r border-slate-200 select-none">···</span>
-                <span className="pl-4 italic flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Compiling ingestion scripts...
-                </span>
+        {/* Chat Conversation Thread (ChatGPT Style) */}
+        {showOutput && (
+          <div className="w-full max-w-4xl flex flex-col gap-8 text-left mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* User Message */}
+            <div className="flex gap-4 items-start px-2">
+              <div className="w-7 h-7 rounded-full bg-stone-200/80 text-stone-700 flex items-center justify-center font-bold text-xs shrink-0 select-none">
+                U
               </div>
-            )}
-          </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-0.5 select-none">You</div>
+                <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap font-sans">
+                  {submittedPrompt}
+                </p>
+              </div>
+            </div>
 
-          {/* Footer status info */}
-          <div className="px-4 py-2 bg-stone-50 text-[10px] font-mono text-text-secondary flex justify-between">
-            <span>Lines: {editorCode.split("\n").length} • Python 3.10</span>
-            <span>Spark 3.4.1</span>
-          </div>
+            {/* Divider line between turns */}
+            <div className="border-t border-stone-200/60 w-full" />
 
-        </div>
+            {/* Assistant/Copilot Message */}
+            <div className="flex gap-4 items-start px-2">
+              <div className="w-7 h-7 rounded-full bg-black text-white flex items-center justify-center shrink-0 shadow-sm select-none">
+                <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-4">
+                <div>
+                  <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-0.5 select-none">Copilot</div>
+                  <p className="text-sm text-text-primary leading-relaxed font-sans">
+                    Here is the optimized PySpark script matching your query. It reads data from the storage layer, handles de-duplication with a window function, and writes into Delta Lake:
+                  </p>
+                </div>
+
+                {/* Minimal Notion Code block */}
+                <div className="w-full flex flex-col bg-[#FDFDFB] border border-stone-200 rounded-2xl shadow-sm overflow-hidden transition-all duration-300">
+                  {/* Minimal Header */}
+                  <div className="px-5 py-3 bg-[#FAF9F5] border-b border-stone-200/60 flex items-center justify-between select-none">
+                    {/* File Info */}
+                    <div className="flex items-center gap-2 text-xs font-mono text-stone-600">
+                      <FileCode className="w-4 h-4 text-stone-400" />
+                      <span>process_customer_data.py</span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleCopyCode}
+                        className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-800 transition cursor-pointer"
+                        title="Copy Code"
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copied ? "Copied" : "Copy"}</span>
+                      </button>
+                      <button
+                        onClick={handleDownloadCode}
+                        className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-800 transition cursor-pointer"
+                        title="Download Script"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Editor contents */}
+                  <div className="bg-[#FDFDFB] py-4 overflow-y-auto min-h-[320px] max-h-[480px] flex flex-col select-text font-mono rounded-b-2xl">
+                    {renderHighlightedCode()}
+
+                    {isGenerating && (
+                      <div className="px-4 flex items-center py-1 font-mono text-[10px] text-text-secondary/60 animate-pulse">
+                        <span className="w-10 text-right pr-4 border-r border-stone-200 select-none">···</span>
+                        <span className="pl-4 italic flex items-center gap-1">
+                          <RefreshCw className="w-3 h-3 animate-spin text-primary" /> Compiling ingestion scripts...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Explanation section fading in after generation */}
+                <div className={`transition-all duration-700 ease-out ${
+                  isGenerating ? "opacity-0 translate-y-2 max-h-0 overflow-hidden" : "opacity-100 translate-y-0 max-h-[500px]"
+                }`}>
+                  <div className="text-xs text-text-secondary space-y-2.5 leading-relaxed bg-white border border-stone-200/60 rounded-2xl p-4 shadow-xs">
+                    <p className="font-semibold text-text-primary flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-primary" /> Ingestion & Processing Details:
+                    </p>
+                    <ul className="list-disc pl-4 space-y-1.5">
+                      <li><strong className="text-text-primary">ADLS Source Ingestion:</strong> Connects to Azure Data Lake Storage Gen2 path using modern ABFSS driver endpoints.</li>
+                      <li><strong className="text-text-primary">Deduplication Window:</strong> Filters duplicate entries on <code className="font-mono bg-stone-100 px-1 rounded text-[10px]">customer_id</code> by sorting descending timestamp logs via <code className="font-mono bg-stone-100 px-1 rounded text-[10px]">row_number()</code> ranking.</li>
+                      <li><strong className="text-text-primary">Delta Target Lakehouse:</strong> Persists records into silver table targets utilizing schema merging to dynamically adapt schemas.</li>
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </main>
 
