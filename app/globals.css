@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0B1020;
+  --color-surface: #131A2B;
+  --color-card: #1A2338;
+  --color-primary: #FF5F2E;
+  --color-secondary: #47C6FF;
+  --color-success: #00C98D;
+  --color-text-primary: #F4F7FA;
+  --color-text-secondary: #9CA9C3;
+
+  --font-display: var(--font-space-grotesk), sans-serif;
+  --font-sans: var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+
+  --animate-cursor-blink: blink 1s step-end infinite;
+
+  @keyframes blink {
+    from, to { border-color: transparent }
+    50% { border-color: #FF5F2E }
+  }
+}
+
+:root {
+  background-color: #0B1020;
+  color: #F4F7FA;
+}
+
+body {
+  background-color: #0B1020;
+  color: #F4F7FA;
+  font-family: var(--font-inter), sans-serif;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0B1020;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1A2338;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #FF5F2E;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Glow effects */
+.glow-primary {
+  box-shadow: 0 0 15px rgba(255, 95, 46, 0.2);
+}
+.glow-primary:hover {
+  box-shadow: 0 0 25px rgba(255, 95, 46, 0.45);
+}
+
+.glow-secondary {
+  box-shadow: 0 0 15px rgba(71, 198, 255, 0.15);
+}
+.glow-secondary:hover {
+  box-shadow: 0 0 25px rgba(71, 198, 255, 0.35);
+}
+
+/* Editor animations */
+.cursor-blink-line {
+  border-right: 2px solid #FF5F2E;
+  animation: blink 1s step-end infinite;
+}
